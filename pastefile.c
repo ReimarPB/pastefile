@@ -8,7 +8,14 @@
 
 Display *display;
 Window window;
-Atom clipboard, targets, incr_type, output_atom, png_target, string_target;
+Atom clipboard, targets, incr_type, output_atom, png_target, string_target, file_transfer_target, plain_text_target;
+
+enum clipboard_type {
+	CLIPBOARD_UNKNOWN,
+	CLIPBOARD_TEXT,
+	CLIPBOARD_IMAGE,
+	CLIPBOARD_FILE,
+};
 
 void console_print_error(char *error)
 {
@@ -19,6 +26,8 @@ void console_print_error(char *error)
 
 	prof_cons_show(full_error);
 	prof_log_error(full_error);
+
+	free(full_error);
 }
 
 char *run_command_get_first_line(char *command)
@@ -63,6 +72,7 @@ char *detect_file_extension(char *file_path)
 	snprintf(grep_cmd_str, 164, "grep /etc/mime.types -e '^%s\\s' --color=never --max-count=1 | awk '{print $2}' 2>&1", mime_type);
 	char *extension = run_command_get_first_line(grep_cmd_str);
 
+	// Fallback to .txt
 	if (extension != NULL && strlen(extension) == 0) {
 		free(extension);
 		extension = strdup("txt");
@@ -126,44 +136,64 @@ void pastefile(char **args)
 	Atom *target_atoms = (Atom *)get_clipboard(targets, &data_count);
 	if (target_atoms == NULL) return;
 
-	bool is_image = false;
+	enum clipboard_type clipboard_type = CLIPBOARD_UNKNOWN;
 	for (int i = 0; i < data_count; i++) {
-		if (target_atoms[i] == png_target) is_image = true;
+		if (target_atoms[i] == string_target) clipboard_type = CLIPBOARD_TEXT;
+		else if (target_atoms[i] == png_target) clipboard_type = CLIPBOARD_IMAGE;
+		else if (target_atoms[i] == file_transfer_target) clipboard_type = CLIPBOARD_FILE;
 	}
 
 	XFree(target_atoms);
 
-	// Get clipboard data
-	char *file_path = strdup(is_image ? "/tmp/image.png" : "/tmp/file");
-
-	unsigned char *data = get_clipboard(is_image ? png_target : string_target, &data_count);
-	if (data == NULL) return;
-
-	// Write to file
-	FILE *file = fopen(file_path, "w");
-	if (file == NULL) {
-		console_print_error("Could not open file for writing");
+	if (clipboard_type == CLIPBOARD_UNKNOWN) {
+		prof_cons_show("Clipboard data is in unknown format");
 		return;
 	}
-	fwrite(data, data_count, 1, file);
-	fclose(file);
 
-	// Auto-detect file type if text
-	if (!is_image) {
-		// Get extension
-		char *extension = detect_file_extension(file_path);
-		if (extension == NULL) return;
+	char *file_path;
 
-		// Get new file name
-		char *new_file_path = malloc(strlen(file_path) + strlen(extension) + 2);
-		sprintf(new_file_path, "%s.%s", file_path, extension);
+	// Handle file copied from file manager
+	if (clipboard_type == CLIPBOARD_FILE) {
+		// Get path to copied file
+		file_path = (char *)get_clipboard(plain_text_target, &data_count);
+		if (file_path == NULL) return;
 
-		// Rename file and replace file_path if successful
-		if (rename(file_path, new_file_path) != -1) {
-			free(file_path);
-			file_path = new_file_path;
-		} else {
-			free(new_file_path);
+	// Handle text/image, write to temporary file and upload that
+	} else {
+		bool is_image = clipboard_type == CLIPBOARD_IMAGE;
+
+		// Get clipboard data
+		file_path = strdup(is_image ? "/tmp/image.png" : "/tmp/file");
+
+		unsigned char *data = get_clipboard(is_image ? png_target : string_target, &data_count);
+		if (data == NULL) return;
+
+		// Write to file
+		FILE *file = fopen(file_path, "w");
+		if (file == NULL) {
+			console_print_error("Could not open temporary file for writing");
+			return;
+		}
+		fwrite(data, data_count, 1, file);
+		fclose(file);
+
+		// Auto-detect file type if text
+		if (!is_image) {
+			// Get extension
+			char *extension = detect_file_extension(file_path);
+			if (extension == NULL) return;
+
+			// Get new file name
+			char *new_file_path = malloc(strlen(file_path) + strlen(extension) + 2);
+			sprintf(new_file_path, "%s.%s", file_path, extension);
+
+			// Rename file and replace file_path if successful
+			if (rename(file_path, new_file_path) != -1) {
+				free(file_path);
+				file_path = new_file_path;
+			} else {
+				free(new_file_path);
+			}
 		}
 	}
 
@@ -189,6 +219,8 @@ void prof_init(const char *version, const char *status, const char *account_name
 	output_atom = XInternAtom(display, "CLIPBOARD_OUTPUT", False);
 	png_target = XInternAtom(display, "image/png", False);
 	string_target = XInternAtom(display, "UTF8_STRING", False);
+	file_transfer_target = XInternAtom(display, "application/vnd.portal.filetransfer", False);
+	plain_text_target = XInternAtom(display, "text/plain", False);
 
 	// Create dummy window for receiving events
 	window = XCreateSimpleWindow(display, DefaultRootWindow(display), 0, 0, 1, 1, 0, 0, 0);
