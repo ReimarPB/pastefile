@@ -9,7 +9,6 @@
 Display *display;
 Window window;
 Atom clipboard, targets, incr_type, output_atom, png_target, string_target;
-int event_base, error_base;
 
 void console_print_error(char *error)
 {
@@ -205,9 +204,7 @@ void prof_init(const char *version, const char *status, const char *account_name
 
 void prof_on_unload(void)
 {
+	XDestroyWindow(display, window);
 	XCloseDisplay(display);
 }
-
-void prof_on_start(void) {}
-void prof_on_shutdown(void) {}
 
