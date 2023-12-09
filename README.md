@@ -6,7 +6,7 @@ If your clipboard holds an image, it will be uploaded in PNG format. Otherwise, 
 
 The plugin is created for Linux and X11. It has not been tested with other Unix systems or Xwayland.
 
-To build, run `make` and within profanity, run `/plugins install /path/to/pastefile.so`.
+To install the plugin, run `make install`.
 
 Command usage: `/pastefile`
 
