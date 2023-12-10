@@ -1,3 +1,14 @@
+/*
+ * Pastefile profanity plugin
+ *
+ * Run /pastefile to paste what is currently in your clipboard
+ * and upload it as a file.
+ *
+ * - if it is an image, the png of that is uploaded
+ * - if copied from a file manager, the file you copied will be uploaded
+ * - if your clipboard just holds text, it will be written to a file and uploaded
+ */
+
 #include <X11/Xlib.h>
 #include <profapi.h>
 #include <stdbool.h>
@@ -198,10 +209,8 @@ void pastefile(char **args)
 	}
 
 	// Run command to upload file
-	int command_length = strlen("/sendfile ") + strlen(file_path) + 1;
-	char *command = malloc(command_length);
-	snprintf(command, command_length, "/sendfile %s", file_path);
-
+	char *command = malloc(strlen("/sendfile ") + strlen(file_path) + 1);
+	sprintf(command, "/sendfile %s", file_path);
 	prof_send_line(command);
 
 	free(file_path);
